@@ -11,14 +11,14 @@
         import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js";
 
-        const firebaseConfig = {
-        apiKey: "AIzaSyAZUsv1BvwSmyhWxkOyvxBEjhia-cbcmm8",
-        authDomain: "gestor-pdf-2025.firebaseapp.com",
-        projectId: "gestor-pdf-2025",
-        storageBucket: "gestor-pdf-2025.firebasestorage.app",
-        messagingSenderId: "897752284018",
-        appId: "1:897752284018:web:be86e946c73f1861727beb"
-        };
+const firebaseConfig = {
+  apiKey: "AIzaSyAZUsv1BvwSmyhWxkOyvxBEjhia-cbcmm8",
+  authDomain: "gestor-pdf-2025.firebaseapp.com",
+  projectId: "gestor-pdf-2025",
+  storageBucket: "gestor-pdf-2025.firebasestorage.app",
+  messagingSenderId: "897752284018",
+  appId: "1:897752284018:web:be86e946c73f1861727beb"
+};
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -372,3 +372,4 @@
     </div>
 </body>
 </html>
+
