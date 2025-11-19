@@ -6,13 +6,11 @@
     <title>Gestor de Documentos PDF</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     
-    <!-- Firebase SDK v9+ (la más moderna y ligera) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
         import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js";
 
-        // AQUÍ PEGAS TU CONFIGURACIÓN DE FIREBASE (del paso 1)
         const firebaseConfig = {
         apiKey: "AIzaSyAZUsv1BvwSmyhWxkOyvxBEjhia-cbcmm8",
         authDomain: "gestor-pdf-2025.firebaseapp.com",
@@ -30,7 +28,7 @@
         let isAdmin = false;
         let editingId = null;
 
-        // Contraseña de administrador (cámbiala si quieres)
+        // Contraseña de administrador (cámbiala si quieres, pero pon la misma en las reglas de Firebase)
         const ADMIN_PASSWORD = "admin2025";
 
         // Cargar documentos en tiempo real
@@ -61,7 +59,7 @@
                         <div class="pdf-actions">
                             <button class="btn btn-primary" onclick="window.open('${pdf.fileUrl}', '_blank')">Abrir PDF</button>
                             ${isAdmin ? `
-                                <button class="btn btn-success" onclick="editPdf('${pdf.id}', '${escapeHtml(pdf.title)}', '${escapeHtml(pdf.description || '')}', '${escapeHtml(pdf.fileName)}')">Editar</button>
+                                <button class="btn btn-success" onclick="editPdf('${pdf.id}', '${escapeHtml(pdf.title)}', '${escapeHtml(pdf.description || '')}', '${escapeHtml(pdf.fileName || '')}')">Editar</button>
                                 <button class="btn btn-danger" onclick="deletePdf('${pdf.id}', '${pdf.fileUrl}')">Eliminar</button>
                             ` : ''}
                         </div>
@@ -81,8 +79,9 @@
                 document.getElementById('logoutBtn').style.display = 'inline-block';
                 document.getElementById('userBadge').innerHTML = '<span class="admin-badge">Administrador</span>';
                 document.getElementById('loginModal').classList.remove('active');
+                document.getElementById('password').value = '';
             } else {
-                alert('Contraseña incorrecta');
+                alert('❌ Contraseña incorrecta. Intenta "admin2025"');
             }
         };
 
@@ -108,7 +107,7 @@
             document.getElementById('modalTitle').textContent = 'Editar Documento PDF';
             document.getElementById('pdfTitle').value = title;
             document.getElementById('pdfDescription').value = desc;
-            document.getElementById('fileLabel').textContent = fileName;
+            document.getElementById('fileLabel').textContent = fileName || 'Seleccionar nuevo archivo PDF';
             document.getElementById('pdfFile').required = false;
             document.getElementById('pdfModal').classList.add('active');
         };
@@ -121,13 +120,16 @@
         window.deletePdf = async function(id, fileUrl) {
             if (!confirm('¿Eliminar este documento permanentemente?')) return;
             try {
-                // Borrar archivo del Storage
-                const fileRef = ref(storage, fileUrl);
-                await deleteObject(fileRef);
+                // Borrar archivo del Storage (si existe URL)
+                if (fileUrl) {
+                    const fileRef = ref(storage, fileUrl.replace('https://firebasestorage.googleapis.com/v0/b/' + firebaseConfig.storageBucket + '/o/', ''));
+                    await deleteObject(fileRef);
+                }
                 // Borrar documento de Firestore
                 await deleteDoc(doc(db, "pdfs", id));
+                alert('✅ Documento eliminado');
             } catch (e) {
-                alert('Error al eliminar');
+                alert('❌ Error al eliminar: ' + e.message);
             }
         };
 
@@ -137,16 +139,35 @@
             const description = document.getElementById('pdfDescription').value.trim();
             const fileInput = document.getElementById('pdfFile');
 
-            if (!title) alert('Falta el título'); return;
-            if (!fileInput.files[0] && !editingId) { alert('Selecciona un PDF'); return; }
+            if (!title) {
+                alert('❌ Falta el título');
+                return;
+            }
+            if (!fileInput.files[0] && !editingId) {
+                alert('❌ Selecciona un archivo PDF');
+                return;
+            }
+            if (!isAdmin) {
+                alert('❌ Debes iniciar sesión como admin');
+                return;
+            }
 
             try {
                 let fileUrl = editingId ? pdfs.find(p => p.id === editingId)?.fileUrl : null;
 
                 if (fileInput.files[0]) {
                     const file = fileInput.files[0];
+                    if (!file.type.startsWith('application/pdf')) {
+                        alert('❌ Solo se permiten archivos PDF');
+                        return;
+                    }
                     const storageRef = ref(storage, `pdfs/${Date.now()}_${file.name}`);
-                    const snapshot = await uploadBytes(storageRef, file);
+                    // ¡CLAVE! Enviar metadatos con la contraseña para que las reglas de Firebase lo permitan
+                    const metadata = {
+                        password: ADMIN_PASSWORD,  // Esto desbloquea la subida según las reglas
+                        contentType: 'application/pdf'
+                    };
+                    const snapshot = await uploadBytes(storageRef, file, metadata);
                     fileUrl = await getDownloadURL(snapshot.ref);
                 }
 
@@ -160,13 +181,17 @@
 
                 if (editingId) {
                     await updateDoc(doc(db, "pdfs", editingId), pdfData);
+                    alert('✅ Documento editado');
                 } else {
                     await addDoc(collection(db, "pdfs"), pdfData);
+                    alert('✅ Documento guardado en la nube');
                 }
 
+                document.getElementById('pdfForm').reset();
                 closeModal();
             } catch (err) {
-                alert('Error al guardar: ' + err.message);
+                console.error(err);
+                alert('❌ Error al guardar: ' + err.message + '\n\nRevisa las reglas de Firebase o la consola (F12).');
             }
         };
 
@@ -179,12 +204,22 @@
 
         // Login modal
         window.showLoginModal = () => document.getElementById('loginModal').classList.add('active');
-        window.closeLoginModal = () => document.getElementById('loginModal').classList.remove('active');
+        window.closeLoginModal = () => {
+            document.getElementById('loginModal').classList.remove('active');
+            document.getElementById('password').value = '';
+        };
 
         // Actualizar nombre de archivo seleccionado
-        document.getElementById('pdfFile')?.addEventListener('change', () => {
-            const file = document.getElementById('pdfFile').files[0];
-            if (file) document.getElementById('fileLabel').textContent = file.name;
+        document.addEventListener('DOMContentLoaded', () => {
+            const fileInput = document.getElementById('pdfFile');
+            if (fileInput) {
+                fileInput.addEventListener('change', () => {
+                    const file = fileInput.files[0];
+                    if (file) {
+                        document.getElementById('fileLabel').textContent = file.name;
+                    }
+                });
+            }
         });
     </script>
 
@@ -239,13 +274,14 @@
         .modal-content { background:var(--bg-card); backdrop-filter:blur(30px); border-radius:20px; max-width:540px; width:100%; border:1px solid var(--border); box-shadow:0 25px 50px rgba(0,0,0,0.25); overflow:hidden; }
         .modal-header { padding:24px 32px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); }
         .modal-header h2 { font-size:24px; font-weight:600; }
-        .close-btn { font-size:32px; background:none; border:none; color:var(--text-secondary); cursor:pointer; width:40px; height:40px; border-radius:50%; }
+        .close-btn { font-size:32px; background:none; border:none; color:var(--text-secondary); cursor:pointer; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
         .close-btn:hover { background:rgba(0,0,0,0.08); }
         .modal-body { padding:32px; }
         .form-group { margin-bottom:24px; }
         .form-group label { display:block; margin-bottom:8px; font-weight:600; font-size:15px; }
         .form-group input, .form-group textarea { width:100%; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:rgba(255,255,255,0.6); font-size:16px; }
         .form-group input:focus, .form-group textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,113,227,0.15); }
+        .form-group textarea { min-height:80px; resize:vertical; }
         .file-input-label { display:block; padding:40px; background:rgba(0,0,0,0.03); border:2px dashed var(--border); border-radius:14px; text-align:center; cursor:pointer; transition:all .3s; color:var(--text-secondary); }
         .file-input-label:hover { border-color:var(--accent); background:rgba(0,113,227,0.05); color:var(--accent); }
         .modal-footer { padding:20px 32px 32px; display:flex; gap:14px; }
@@ -259,22 +295,22 @@
     <div class="container">
         <header>
             <div>
-                <h1>Gestor de Documentos PDF</h1>
+                <h1>📚 Gestor de Documentos PDF</h1>
                 <span id="userBadge"></span>
             </div>
             <div>
-                <button id="loginBtn" class="btn btn-primary" onclick="showLoginModal()">Acceso Admin</button>
-                <button id="addPdfBtn" class="btn btn-primary" style="display:none;" onclick="openModal()">Agregar PDF</button>
-                <button id="logoutBtn" class="btn btn-secondary" style="margin-left:12px;display:none;" onclick="logout()">Salir</button>
+                <button id="loginBtn" class="btn btn-primary" onclick="showLoginModal()">🔐 Acceso Admin</button>
+                <button id="addPdfBtn" class="btn btn-primary" style="display:none;" onclick="openModal()">➕ Agregar PDF</button>
+                <button id="logoutBtn" class="btn btn-secondary" style="margin-left:12px;display:none;" onclick="logout()">🚪 Salir</button>
             </div>
         </header>
 
         <div class="content">
             <div id="pdfList" class="pdf-grid"></div>
             <div id="emptyState" class="empty-state">
-                <div class="empty-state-icon">No documents</div>
+                <div class="empty-state-icon">📄</div>
                 <h3>No hay documentos disponibles</h3>
-                <p>Los documentos se guardan en la nube. Inicia sesión para gestionar.</p>
+                <p>Inicia sesión como administrador para agregar documentos en la nube</p>
             </div>
         </div>
     </div>
@@ -283,19 +319,19 @@
     <div id="loginModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Acceso Administrador</h2>
+                <h2>🔐 Acceso Administrador</h2>
                 <button class="close-btn" onclick="closeLoginModal()">×</button>
             </div>
             <div class="modal-body">
                 <form onsubmit="event.preventDefault(); login();">
                     <div class="form-group">
                         <label>Contraseña</label>
-                        <input type="password" id="password" placeholder="Escribe la contraseña">
+                        <input type="password" id="password" placeholder="Escribe la contraseña" required>
                     </div>
                     <button type="submit" class="btn btn-primary" style="width:100%;height:50px;font-size:17px;">Entrar</button>
                 </form>
                 <p style="text-align:center;margin-top:20px;color:var(--text-secondary);font-size:14px;">
-                    Pista: la contraseña es <strong>admin2025</strong>
+                    Pista: <strong>admin2025</strong>
                 </p>
             </div>
         </div>
@@ -315,20 +351,20 @@
                         <input type="text" id="pdfTitle" required placeholder="Ej: Manual de usuario">
                     </div>
                     <div class="form-group">
-                        <label>Descripción</label>
-                        <textarea id="pdfDescription" placeholder="Opcional..."></textarea>
+                        <label>Descripción (opcional)</label>
+                        <textarea id="pdfDescription" placeholder="Describe el contenido..."></textarea>
                     </div>
                     <div class="form-group">
-                        <label>Archivo PDF ${editingId ? '(dejar vacío si no quieres cambiarlo)' : '*'} </label>
+                        <label>Archivo PDF ${editingId ? '(opcional, deja vacío si no cambias)' : '*'} </label>
                         <input type="file" id="pdfFile" accept=".pdf" style="display:none;">
                         <label for="pdfFile" class="file-input-label">
-                            <div style="font-size:48px;margin-bottom:12px;">Upload</div>
+                            <div style="font-size:48px;margin-bottom:12px;">📎</div>
                             <span id="fileLabel">Seleccionar archivo PDF</span>
                         </label>
                     </div>
                     <div class="modal-footer">
-                        <button type="submit" class="btn btn-success" style="flex:1;height:50px;font-size:17px;">Guardar</button>
-                        <button type="button" class="btn btn-secondary" style="flex:1;height:50px;font-size:17px;" onclick="closeModal()">Cancelar</button>
+                        <button type="submit" class="btn btn-success" style="flex:1;height:50px;font-size:17px;">💾 Guardar</button>
+                        <button type="button" class="btn btn-secondary" style="flex:1;height:50px;font-size:17px;" onclick="closeModal()">❌ Cancelar</button>
                     </div>
                 </form>
             </div>
