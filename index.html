@@ -3,22 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestor de Documentos PDF</title>
+    <title>Gestor de Documentos PDF - Matemáticas</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
         import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyAZUsv1BvwSmyhWxkOyvxBEjhia-cbcmm8",
-  authDomain: "gestor-pdf-2025.firebaseapp.com",
-  projectId: "gestor-pdf-2025",
-  storageBucket: "gestor-pdf-2025.firebasestorage.app",
-  messagingSenderId: "897752284018",
-  appId: "1:897752284018:web:be86e946c73f1861727beb"
-};
+        const firebaseConfig = {
+            apiKey: "AIzaSyAZUsv1BvwSmyhWxkOyvxBEjhia-cbcmm8",
+            authDomain: "gestor-pdf-2025.firebaseapp.com",
+            projectId: "gestor-pdf-2025",
+            storageBucket: "gestor-pdf-2025.firebasestorage.app",
+            messagingSenderId: "897752284018",
+            appId: "1:897752284018:web:be86e946c73f1861727beb"
+        };
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -27,39 +26,74 @@ const firebaseConfig = {
         let pdfs = [];
         let isAdmin = false;
         let editingId = null;
-
-        // Contraseña de administrador (cámbiala si quieres, pero pon la misma en las reglas de Firebase)
         const ADMIN_PASSWORD = "admin2025";
 
-        // Cargar documentos en tiempo real
+        // CATEGORÍAS DE MATEMÁTICAS + COLORES
+        const CATEGORIAS = [
+            { nombre: "Todos", color: "#8e8e93" },
+            { nombre: "Álgebra", color: "#ff375f" },
+            { nombre: "Geometría", color: "#ff9f0a" },
+            { nombre: "Cálculo", color: "#00d46a" },
+            { nombre: "Estadística", color: "#007aff" },
+            { nombre: "Probabilidad", color: "#af52de" },
+            { nombre: "Álgebra Lineal", color: "#ff2d92" },
+            { nombre: "Trigonometría", color: "#32d74b" },
+            { nombre: "Matemática Discreta", color: "#64d2ff" },
+            { nombre: "Otros", color: "#8e8e93" }
+        ];
+
+        let categoriaActual = "Todos";
+        let busquedaActual = "";
+
         const q = query(collection(db, "pdfs"), orderBy("createdAt", "desc"));
         onSnapshot(q, (snapshot) => {
             pdfs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderPdfs();
+            renderFiltrosCategorias();
         });
+
+        function getColorCategoria(cat) {
+            const found = CATEGORIAS.find(c => c.nombre === cat);
+            return found ? found.color : "#8e8e93";
+        }
+
+        function getPdfsFiltrados() {
+            return pdfs.filter(pdf => {
+                const coincideCategoria = categoriaActual === "Todos" || pdf.categoria === categoriaActual;
+                const texto = `${pdf.title} ${pdf.description || ''}`.toLowerCase();
+                const coincideBusqueda = texto.includes(busquedaActual.toLowerCase());
+                return coincideCategoria && coincideBusqueda;
+            });
+        }
 
         function renderPdfs() {
             const list = document.getElementById('pdfList');
             const empty = document.getElementById('emptyState');
+            const pdfsFiltrados = getPdfsFiltrados();
 
-            if (pdfs.length === 0) {
+            if (pdfsFiltrados.length === 0) {
                 list.innerHTML = '';
                 empty.style.display = 'block';
+                empty.querySelector('p').textContent = 
+                    pdfs.length === 0 
+                        ? 'No hay documentos disponibles' 
+                        : 'No se encontraron documentos con los filtros actuales';
                 return;
             }
             empty.style.display = 'none';
-            list.innerHTML = pdfs.map(pdf => `
+            list.innerHTML = pdfsFiltrados.map(pdf => `
                 <div class="pdf-card">
                     <div class="pdf-preview">
                         <embed src="${pdf.fileUrl}#toolbar=0&navpanes=0&scrollbar=1&view=FitH" type="application/pdf">
                     </div>
                     <div class="pdf-info">
                         <div class="pdf-title">${pdf.title}</div>
+                        ${pdf.categoria ? `<div class="pdf-categoria" style="background:${getColorCategoria(pdf.categoria)}">${pdf.categoria}</div>` : ''}
                         <div class="pdf-description">${pdf.description || ''}</div>
                         <div class="pdf-actions">
                             <button class="btn btn-primary" onclick="window.open('${pdf.fileUrl}', '_blank')">Abrir PDF</button>
                             ${isAdmin ? `
-                                <button class="btn btn-success" onclick="editPdf('${pdf.id}', '${escapeHtml(pdf.title)}', '${escapeHtml(pdf.description || '')}', '${escapeHtml(pdf.fileName || '')}')">Editar</button>
+                                <button class="btn btn-success" onclick="editPdf('${pdf.id}', '${escapeHtml(pdf.title)}', '${escapeHtml(pdf.description || '')}', '${escapeHtml(pdf.fileName || '')}', '${escapeHtml(pdf.categoria || '')}')">Editar</button>
                                 <button class="btn btn-danger" onclick="deletePdf('${pdf.id}', '${pdf.fileUrl}')">Eliminar</button>
                             ` : ''}
                         </div>
@@ -68,6 +102,29 @@ const firebaseConfig = {
             `).join('');
         }
 
+        function renderFiltrosCategorias() {
+            const container = document.getElementById('categoriaFilters');
+            container.innerHTML = CATEGORIAS.map(cat => `
+                <button class="filter-btn ${categoriaActual === cat.nombre ? 'active' : ''}" 
+                        style="background:${categoriaActual === cat.nombre ? cat.color : 'rgba(0,0,0,0.05)'}; color:${categoriaActual === cat.nombre ? 'white' : 'var(--text-primary)'}"
+                        onclick="filtrarPorCategoria('${cat.nombre}')">
+                    ${cat.nombre}
+                </button>
+            `).join('');
+        }
+
+        window.filtrarPorCategoria = function(cat) {
+            categoriaActual = cat;
+            renderFiltrosCategorias();
+            renderPdfs();
+        };
+
+        window.buscar = function() {
+            busquedaActual = document.getElementById('searchInput').value.trim();
+            renderPdfs();
+        };
+
+        // === Resto de funciones (login, modal, etc.) ===
         window.renderPdfs = renderPdfs;
 
         window.login = function() {
@@ -81,7 +138,7 @@ const firebaseConfig = {
                 document.getElementById('loginModal').classList.remove('active');
                 document.getElementById('password').value = '';
             } else {
-                alert('❌ Contraseña incorrecta. Intenta "admin2025"');
+                alert('Contraseña incorrecta');
             }
         };
 
@@ -99,14 +156,16 @@ const firebaseConfig = {
             document.getElementById('pdfForm').reset();
             document.getElementById('fileLabel').textContent = 'Seleccionar archivo PDF';
             document.getElementById('pdfFile').required = true;
+            document.getElementById('pdfCategoria').value = 'Álgebra';
             document.getElementById('pdfModal').classList.add('active');
         };
 
-        window.editPdf = function(id, title, desc, fileName) {
+        window.editPdf = function(id, title, desc, fileName, categoria) {
             editingId = id;
             document.getElementById('modalTitle').textContent = 'Editar Documento PDF';
             document.getElementById('pdfTitle').value = title;
             document.getElementById('pdfDescription').value = desc;
+            document.getElementById('pdfCategoria').value = categoria || 'Otros';
             document.getElementById('fileLabel').textContent = fileName || 'Seleccionar nuevo archivo PDF';
             document.getElementById('pdfFile').required = false;
             document.getElementById('pdfModal').classList.add('active');
@@ -120,16 +179,14 @@ const firebaseConfig = {
         window.deletePdf = async function(id, fileUrl) {
             if (!confirm('¿Eliminar este documento permanentemente?')) return;
             try {
-                // Borrar archivo del Storage (si existe URL)
                 if (fileUrl) {
                     const fileRef = ref(storage, fileUrl.replace('https://firebasestorage.googleapis.com/v0/b/' + firebaseConfig.storageBucket + '/o/', ''));
                     await deleteObject(fileRef);
                 }
-                // Borrar documento de Firestore
                 await deleteDoc(doc(db, "pdfs", id));
-                alert('✅ Documento eliminado');
+                alert('Documento eliminado');
             } catch (e) {
-                alert('❌ Error al eliminar: ' + e.message);
+                alert('Error al eliminar: ' + e.message);
             }
         };
 
@@ -137,36 +194,21 @@ const firebaseConfig = {
             e.preventDefault();
             const title = document.getElementById('pdfTitle').value.trim();
             const description = document.getElementById('pdfDescription').value.trim();
+            const categoria = document.getElementById('pdfCategoria').value;
             const fileInput = document.getElementById('pdfFile');
 
-            if (!title) {
-                alert('❌ Falta el título');
-                return;
-            }
-            if (!fileInput.files[0] && !editingId) {
-                alert('❌ Selecciona un archivo PDF');
-                return;
-            }
-            if (!isAdmin) {
-                alert('❌ Debes iniciar sesión como admin');
-                return;
-            }
+            if (!title) return alert('Falta el título');
+            if (!fileInput.files[0] && !editingId) return alert('Selecciona un archivo PDF');
+            if (!isAdmin) return alert('Debes iniciar sesión como admin');
 
             try {
                 let fileUrl = editingId ? pdfs.find(p => p.id === editingId)?.fileUrl : null;
 
                 if (fileInput.files[0]) {
                     const file = fileInput.files[0];
-                    if (!file.type.startsWith('application/pdf')) {
-                        alert('❌ Solo se permiten archivos PDF');
-                        return;
-                    }
+                    if (!file.type.startsWith('application/pdf')) return alert('Solo se permiten PDFs');
                     const storageRef = ref(storage, `pdfs/${Date.now()}_${file.name}`);
-                    // ¡CLAVE! Enviar metadatos con la contraseña para que las reglas de Firebase lo permitan
-                    const metadata = {
-                        password: ADMIN_PASSWORD,  // Esto desbloquea la subida según las reglas
-                        contentType: 'application/pdf'
-                    };
+                    const metadata = { password: ADMIN_PASSWORD, contentType: 'application/pdf' };
                     const snapshot = await uploadBytes(storageRef, file, metadata);
                     fileUrl = await getDownloadURL(snapshot.ref);
                 }
@@ -174,6 +216,7 @@ const firebaseConfig = {
                 const pdfData = {
                     title,
                     description,
+                    categoria,
                     fileUrl,
                     fileName: fileInput.files[0]?.name || pdfs.find(p => p.id === editingId)?.fileName,
                     createdAt: serverTimestamp()
@@ -181,17 +224,17 @@ const firebaseConfig = {
 
                 if (editingId) {
                     await updateDoc(doc(db, "pdfs", editingId), pdfData);
-                    alert('✅ Documento editado');
+                    alert('Documento editado');
                 } else {
                     await addDoc(collection(db, "pdfs"), pdfData);
-                    alert('✅ Documento guardado en la nube');
+                    alert('Documento guardado');
                 }
 
                 document.getElementById('pdfForm').reset();
                 closeModal();
             } catch (err) {
                 console.error(err);
-                alert('❌ Error al guardar: ' + err.message + '\n\nRevisa las reglas de Firebase o la consola (F12).');
+                alert('Error al guardar: ' + err.message);
             }
         };
 
@@ -202,24 +245,19 @@ const firebaseConfig = {
         }
         window.escapeHtml = escapeHtml;
 
-        // Login modal
         window.showLoginModal = () => document.getElementById('loginModal').classList.add('active');
         window.closeLoginModal = () => {
             document.getElementById('loginModal').classList.remove('active');
             document.getElementById('password').value = '';
         };
 
-        // Actualizar nombre de archivo seleccionado
         document.addEventListener('DOMContentLoaded', () => {
             const fileInput = document.getElementById('pdfFile');
-            if (fileInput) {
-                fileInput.addEventListener('change', () => {
-                    const file = fileInput.files[0];
-                    if (file) {
-                        document.getElementById('fileLabel').textContent = file.name;
-                    }
-                });
-            }
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files[0]) {
+                    document.getElementById('fileLabel').textContent = fileInput.files[0].name;
+                }
+            });
         });
     </script>
 
@@ -249,15 +287,44 @@ const firebaseConfig = {
         * { margin:0; padding:0; box-sizing:border-box; }
         body { font-family: -apple-system,system-ui,'SF Pro Display',sans-serif; background:var(--bg-primary); color:var(--text-primary); min-height:100vh; padding:20px; line-height:1.5; }
         .container { max-width:1280px; margin:0 auto; padding:0 20px; }
-        header { background:var(--bg-card); backdrop-filter:blur(20px); border:1px solid var(--border); border-radius:18px; padding:20px 32px; margin-bottom:32px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 4px 20px rgba(0,0,0,0.05); flex-wrap:wrap; gap:16px; }
+        header { background:var(--bg-card); backdrop-filter:blur(20px); border:1px solid var(--border); border-radius:18px; padding:20px 32px; margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 4px 20px rgba(0,0,0,0.05); flex-wrap:wrap; gap:16px; }
         h1 { font-size:32px; font-weight:700; }
-        .btn { padding:10px 20px; border:none; border-radius:12px; font-size:15px; font-weight:600; cursor:pointer; transition:all .25s; display:inline-flex; gap:8px; }
+        .btn { padding:10px 20px; border:none; border-radius:12px; font-size:15px; font-weight:600; cursor:pointer; transition:all .25s; display:inline-flex; gap:8px; align-items:center; justify-content:center; }
         .btn-primary { background:var(--accent); color:white; }
         .btn-primary:hover { background:var(--accent-hover); transform:translateY(-1px); }
         .btn-secondary { background:transparent; color:var(--accent); border:1px solid var(--accent); }
         .btn-secondary:hover { background:var(--accent); color:white; }
         .btn-danger { background:var(--danger); color:white; }
         .btn-success { background:var(--success); color:white; }
+
+        .search-bar { margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
+        .search-input { flex: 1; min-width: 280px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 16px; background: rgba(255,255,255,0.7); }
+        .search-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,113,227,0.15); }
+
+        .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; padding: 8px 0; overflow-x: auto; }
+        .filter-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all .2s;
+        }
+        .filter-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        /* Etiqueta de categoría en las tarjetas - TEXTO BLANCO */
+        .pdf-categoria {
+            display: inline-block;
+            color: white !important;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
         .content { background:var(--bg-card); backdrop-filter:blur(20px); border:1px solid var(--border); border-radius:20px; padding:40px; box-shadow:0 8px 32px rgba(0,0,0,0.08); }
         .pdf-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:32px; margin-top:20px; }
         .pdf-card { background:var(--bg-card); backdrop-filter:blur(16px); border:1px solid var(--border); border-radius:20px; overflow:hidden; transition:all .4s cubic-bezier(.25,.8,.25,1); box-shadow:0 4px 16px rgba(0,0,0,0.06); }
@@ -267,8 +334,9 @@ const firebaseConfig = {
         .pdf-info { padding:24px; }
         .pdf-title { font-size:22px; font-weight:600; margin-bottom:8px; }
         .pdf-description { color:var(--text-secondary); font-size:15px; margin-bottom:20px; line-height:1.5; }
-        .pdf-actions { display:flex; gap:12px; }
+        .pdf-actions { display:flex; gap:12px; flex-wrap:wrap; }
         .pdf-actions .btn { flex:1; justify-content:center; padding:12px; font-size:14px; }
+
         .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); backdrop-filter:blur(12px); align-items:center; justify-content:center; z-index:1000; padding:20px; }
         .modal.active { display:flex; }
         .modal-content { background:var(--bg-card); backdrop-filter:blur(30px); border-radius:20px; max-width:540px; width:100%; border:1px solid var(--border); box-shadow:0 25px 50px rgba(0,0,0,0.25); overflow:hidden; }
@@ -279,8 +347,9 @@ const firebaseConfig = {
         .modal-body { padding:32px; }
         .form-group { margin-bottom:24px; }
         .form-group label { display:block; margin-bottom:8px; font-weight:600; font-size:15px; }
-        .form-group input, .form-group textarea { width:100%; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:rgba(255,255,255,0.6); font-size:16px; }
-        .form-group input:focus, .form-group textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,113,227,0.15); }
+        .form-group input, .form-group textarea, .form-group select { width:100%; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:rgba(255,255,255,0.6); font-size:16px; }
+        .form-group select { cursor:pointer; }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,113,227,0.15); }
         .form-group textarea { min-height:80px; resize:vertical; }
         .file-input-label { display:block; padding:40px; background:rgba(0,0,0,0.03); border:2px dashed var(--border); border-radius:14px; text-align:center; cursor:pointer; transition:all .3s; color:var(--text-secondary); }
         .file-input-label:hover { border-color:var(--accent); background:rgba(0,113,227,0.05); color:var(--accent); }
@@ -295,22 +364,28 @@ const firebaseConfig = {
     <div class="container">
         <header>
             <div>
-                <h1>📚 Gestor de Documentos PDF</h1>
+                <h1>Repositorio de PDFs</h1>
                 <span id="userBadge"></span>
             </div>
             <div>
-                <button id="loginBtn" class="btn btn-primary" onclick="showLoginModal()">🔐 Acceso Admin</button>
-                <button id="addPdfBtn" class="btn btn-primary" style="display:none;" onclick="openModal()">➕ Agregar PDF</button>
-                <button id="logoutBtn" class="btn btn-secondary" style="margin-left:12px;display:none;" onclick="logout()">🚪 Salir</button>
+                <button id="loginBtn" class="btn btn-primary" onclick="showLoginModal()">Acceso Admin</button>
+                <button id="addPdfBtn" class="btn btn-primary" style="display:none;" onclick="openModal()">Agregar PDF</button>
+                <button id="logoutBtn" class="btn btn-secondary" style="margin-left:12px;display:none;" onclick="logout()">Salir</button>
             </div>
         </header>
 
         <div class="content">
+            <div class="search-bar">
+                <input type="text" id="searchInput" class="search-input" placeholder="Buscar apuntes, ejercicios, exámenes..." onkeyup="buscar()">
+            </div>
+
+            <div class="filter-bar" id="categoriaFilters"></div>
+
             <div id="pdfList" class="pdf-grid"></div>
             <div id="emptyState" class="empty-state">
-                <div class="empty-state-icon">📄</div>
+                <div class="empty-state-icon"></div>
                 <h3>No hay documentos disponibles</h3>
-                <p>Inicia sesión como administrador para agregar documentos en la nube</p>
+                <p>Inicia sesión como administrador para subir material</p>
             </div>
         </div>
     </div>
@@ -319,7 +394,7 @@ const firebaseConfig = {
     <div id="loginModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>🔐 Acceso Administrador</h2>
+                <h2>Acceso Administrador</h2>
                 <button class="close-btn" onclick="closeLoginModal()">×</button>
             </div>
             <div class="modal-body">
@@ -330,9 +405,6 @@ const firebaseConfig = {
                     </div>
                     <button type="submit" class="btn btn-primary" style="width:100%;height:50px;font-size:17px;">Entrar</button>
                 </form>
-                <p style="text-align:center;margin-top:20px;color:var(--text-secondary);font-size:14px;">
-                    Pista: <strong>admin2025</strong>
-                </p>
             </div>
         </div>
     </div>
@@ -348,23 +420,37 @@ const firebaseConfig = {
                 <form id="pdfForm" onsubmit="savePdf(event)">
                     <div class="form-group">
                         <label>Título *</label>
-                        <input type="text" id="pdfTitle" required placeholder="Ej: Manual de usuario">
+                        <input type="text" id="pdfTitle" required placeholder="Ej: Derivadas - Regla de la cadena">
+                    </div>
+                    <div class="form-group">
+                        <label>Categoría de Matemáticas</label>
+                        <select id="pdfCategoria">
+                            <option value="Álgebra">Álgebra</option>
+                            <option value="Geometría">Geometría</option>
+                            <option value="Cálculo">Cálculo</option>
+                            <option value="Estadística">Estadística</option>
+                            <option value="Probabilidad">Probabilidad</option>
+                            <option value="Álgebra Lineal">Álgebra Lineal</option>
+                            <option value="Trigonometría">Trigonometría</option>
+                            <option value="Matemática Discreta">Matemática Discreta</option>
+                            <option value="Otros">Otros</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label>Descripción (opcional)</label>
-                        <textarea id="pdfDescription" placeholder="Describe el contenido..."></textarea>
+                        <textarea id="pdfDescription" placeholder="Ej: Apuntes completos del tema 5 con ejercicios resueltos"></textarea>
                     </div>
                     <div class="form-group">
-                        <label>Archivo PDF ${editingId ? '(opcional, deja vacío si no cambias)' : '*'} </label>
+                        <label>Archivo PDF *</label>
                         <input type="file" id="pdfFile" accept=".pdf" style="display:none;">
                         <label for="pdfFile" class="file-input-label">
-                            <div style="font-size:48px;margin-bottom:12px;">📎</div>
+                            <div style="font-size:48px;margin-bottom:12px;"></div>
                             <span id="fileLabel">Seleccionar archivo PDF</span>
                         </label>
                     </div>
                     <div class="modal-footer">
-                        <button type="submit" class="btn btn-success" style="flex:1;height:50px;font-size:17px;">💾 Guardar</button>
-                        <button type="button" class="btn btn-secondary" style="flex:1;height:50px;font-size:17px;" onclick="closeModal()">❌ Cancelar</button>
+                        <button type="submit" class="btn btn-success" style="flex:1;height:50px;font-size:17px;">Guardar</button>
+                        <button type="button" class="btn btn-secondary" style="flex:1;height:50px;font-size:17px;" onclick="closeModal()">Cancelar</button>
                     </div>
                 </form>
             </div>
@@ -372,4 +458,3 @@ const firebaseConfig = {
     </div>
 </body>
 </html>
-
