@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Documentos PDF</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    
+    <!-- Firebase SDK v9+ (la más moderna y ligera) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js";
+
+        // AQUÍ PEGAS TU CONFIGURACIÓN DE FIREBASE (del paso 1)
+        const firebaseConfig = {
+        apiKey: "AIzaSyAZUsv1BvwSmyhWxkOyvxBEjhia-cbcmm8",
+        authDomain: "gestor-pdf-2025.firebaseapp.com",
+        projectId: "gestor-pdf-2025",
+        storageBucket: "gestor-pdf-2025.firebasestorage.app",
+        messagingSenderId: "897752284018",
+        appId: "1:897752284018:web:be86e946c73f1861727beb"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+
+        let pdfs = [];
+        let isAdmin = false;
+        let editingId = null;
+
+        // Contraseña de administrador (cámbiala si quieres)
+        const ADMIN_PASSWORD = "admin2025";
+
+        // Cargar documentos en tiempo real
+        const q = query(collection(db, "pdfs"), orderBy("createdAt", "desc"));
+        onSnapshot(q, (snapshot) => {
+            pdfs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderPdfs();
+        });
+
+        function renderPdfs() {
+            const list = document.getElementById('pdfList');
+            const empty = document.getElementById('emptyState');
+
+            if (pdfs.length === 0) {
+                list.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            list.innerHTML = pdfs.map(pdf => `
+                <div class="pdf-card">
+                    <div class="pdf-preview">
+                        <embed src="${pdf.fileUrl}#toolbar=0&navpanes=0&scrollbar=1&view=FitH" type="application/pdf">
+                    </div>
+                    <div class="pdf-info">
+                        <div class="pdf-title">${pdf.title}</div>
+                        <div class="pdf-description">${pdf.description || ''}</div>
+                        <div class="pdf-actions">
+                            <button class="btn btn-primary" onclick="window.open('${pdf.fileUrl}', '_blank')">Abrir PDF</button>
+                            ${isAdmin ? `
+                                <button class="btn btn-success" onclick="editPdf('${pdf.id}', '${escapeHtml(pdf.title)}', '${escapeHtml(pdf.description || '')}', '${escapeHtml(pdf.fileName)}')">Editar</button>
+                                <button class="btn btn-danger" onclick="deletePdf('${pdf.id}', '${pdf.fileUrl}')">Eliminar</button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        window.renderPdfs = renderPdfs;
+
+        window.login = function() {
+            const pass = document.getElementById('password').value;
+            if (pass === ADMIN_PASSWORD) {
+                isAdmin = true;
+                document.getElementById('loginBtn').style.display = 'none';
+                document.getElementById('addPdfBtn').style.display = 'inline-block';
+                document.getElementById('logoutBtn').style.display = 'inline-block';
+                document.getElementById('userBadge').innerHTML = '<span class="admin-badge">Administrador</span>';
+                document.getElementById('loginModal').classList.remove('active');
+            } else {
+                alert('Contraseña incorrecta');
+            }
+        };
+
+        window.logout = function() {
+            isAdmin = false;
+            document.getElementById('loginBtn').style.display = 'inline-block';
+            document.getElementById('addPdfBtn').style.display = 'none';
+            document.getElementById('logoutBtn').style.display = 'none';
+            document.getElementById('userBadge').innerHTML = '';
+        };
+
+        window.openModal = function() {
+            editingId = null;
+            document.getElementById('modalTitle').textContent = 'Agregar Documento PDF';
+            document.getElementById('pdfForm').reset();
+            document.getElementById('fileLabel').textContent = 'Seleccionar archivo PDF';
+            document.getElementById('pdfFile').required = true;
+            document.getElementById('pdfModal').classList.add('active');
+        };
+
+        window.editPdf = function(id, title, desc, fileName) {
+            editingId = id;
+            document.getElementById('modalTitle').textContent = 'Editar Documento PDF';
+            document.getElementById('pdfTitle').value = title;
+            document.getElementById('pdfDescription').value = desc;
+            document.getElementById('fileLabel').textContent = fileName;
+            document.getElementById('pdfFile').required = false;
+            document.getElementById('pdfModal').classList.add('active');
+        };
+
+        window.closeModal = function() {
+            document.getElementById('pdfModal').classList.remove('active');
+            editingId = null;
+        };
+
+        window.deletePdf = async function(id, fileUrl) {
+            if (!confirm('¿Eliminar este documento permanentemente?')) return;
+            try {
+                // Borrar archivo del Storage
+                const fileRef = ref(storage, fileUrl);
+                await deleteObject(fileRef);
+                // Borrar documento de Firestore
+                await deleteDoc(doc(db, "pdfs", id));
+            } catch (e) {
+                alert('Error al eliminar');
+            }
+        };
+
+        window.savePdf = async function(e) {
+            e.preventDefault();
+            const title = document.getElementById('pdfTitle').value.trim();
+            const description = document.getElementById('pdfDescription').value.trim();
+            const fileInput = document.getElementById('pdfFile');
+
+            if (!title) alert('Falta el título'); return;
+            if (!fileInput.files[0] && !editingId) { alert('Selecciona un PDF'); return; }
+
+            try {
+                let fileUrl = editingId ? pdfs.find(p => p.id === editingId)?.fileUrl : null;
+
+                if (fileInput.files[0]) {
+                    const file = fileInput.files[0];
+                    const storageRef = ref(storage, `pdfs/${Date.now()}_${file.name}`);
+                    const snapshot = await uploadBytes(storageRef, file);
+                    fileUrl = await getDownloadURL(snapshot.ref);
+                }
+
+                const pdfData = {
+                    title,
+                    description,
+                    fileUrl,
+                    fileName: fileInput.files[0]?.name || pdfs.find(p => p.id === editingId)?.fileName,
+                    createdAt: serverTimestamp()
+                };
+
+                if (editingId) {
+                    await updateDoc(doc(db, "pdfs", editingId), pdfData);
+                } else {
+                    await addDoc(collection(db, "pdfs"), pdfData);
+                }
+
+                closeModal();
+            } catch (err) {
+                alert('Error al guardar: ' + err.message);
+            }
+        };
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        window.escapeHtml = escapeHtml;
+
+        // Login modal
+        window.showLoginModal = () => document.getElementById('loginModal').classList.add('active');
+        window.closeLoginModal = () => document.getElementById('loginModal').classList.remove('active');
+
+        // Actualizar nombre de archivo seleccionado
+        document.getElementById('pdfFile')?.addEventListener('change', () => {
+            const file = document.getElementById('pdfFile').files[0];
+            if (file) document.getElementById('fileLabel').textContent = file.name;
+        });
+    </script>
+
+    <style>
+        :root {
+            --bg-primary: #f5f5f7;
+            --bg-card: rgba(255,255,255,0.65);
+            --bg-card-hover: rgba(255,255,255,0.85);
+            --text-primary: #1d1d1f;
+            --text-secondary: #6e6e73;
+            --accent: #0071e3;
+            --accent-hover: #0060c0;
+            --danger: #ff453a;
+            --success: #30d158;
+            --border: rgba(0,0,0,0.08);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #000;
+                --bg-card: rgba(28,28,30,0.7);
+                --bg-card-hover: rgba(44,44,46,0.9);
+                --text-primary: #f5f5f7;
+                --text-secondary: #8e8e93;
+                --border: rgba(255,255,255,0.1);
+            }
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: -apple-system,system-ui,'SF Pro Display',sans-serif; background:var(--bg-primary); color:var(--text-primary); min-height:100vh; padding:20px; line-height:1.5; }
+        .container { max-width:1280px; margin:0 auto; padding:0 20px; }
+        header { background:var(--bg-card); backdrop-filter:blur(20px); border:1px solid var(--border); border-radius:18px; padding:20px 32px; margin-bottom:32px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 4px 20px rgba(0,0,0,0.05); flex-wrap:wrap; gap:16px; }
+        h1 { font-size:32px; font-weight:700; }
+        .btn { padding:10px 20px; border:none; border-radius:12px; font-size:15px; font-weight:600; cursor:pointer; transition:all .25s; display:inline-flex; gap:8px; }
+        .btn-primary { background:var(--accent); color:white; }
+        .btn-primary:hover { background:var(--accent-hover); transform:translateY(-1px); }
+        .btn-secondary { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+        .btn-secondary:hover { background:var(--accent); color:white; }
+        .btn-danger { background:var(--danger); color:white; }
+        .btn-success { background:var(--success); color:white; }
+        .content { background:var(--bg-card); backdrop-filter:blur(20px); border:1px solid var(--border); border-radius:20px; padding:40px; box-shadow:0 8px 32px rgba(0,0,0,0.08); }
+        .pdf-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:32px; margin-top:20px; }
+        .pdf-card { background:var(--bg-card); backdrop-filter:blur(16px); border:1px solid var(--border); border-radius:20px; overflow:hidden; transition:all .4s cubic-bezier(.25,.8,.25,1); box-shadow:0 4px 16px rgba(0,0,0,0.06); }
+        .pdf-card:hover { transform:translateY(-10px); box-shadow:0 24px 48px rgba(0,0,0,0.18); background:var(--bg-card-hover); }
+        .pdf-preview { width:100%; height:440px; background:#fff; border-bottom:1px solid var(--border); }
+        .pdf-preview embed { width:100%; height:100%; border:none; }
+        .pdf-info { padding:24px; }
+        .pdf-title { font-size:22px; font-weight:600; margin-bottom:8px; }
+        .pdf-description { color:var(--text-secondary); font-size:15px; margin-bottom:20px; line-height:1.5; }
+        .pdf-actions { display:flex; gap:12px; }
+        .pdf-actions .btn { flex:1; justify-content:center; padding:12px; font-size:14px; }
+        .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); backdrop-filter:blur(12px); align-items:center; justify-content:center; z-index:1000; padding:20px; }
+        .modal.active { display:flex; }
+        .modal-content { background:var(--bg-card); backdrop-filter:blur(30px); border-radius:20px; max-width:540px; width:100%; border:1px solid var(--border); box-shadow:0 25px 50px rgba(0,0,0,0.25); overflow:hidden; }
+        .modal-header { padding:24px 32px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); }
+        .modal-header h2 { font-size:24px; font-weight:600; }
+        .close-btn { font-size:32px; background:none; border:none; color:var(--text-secondary); cursor:pointer; width:40px; height:40px; border-radius:50%; }
+        .close-btn:hover { background:rgba(0,0,0,0.08); }
+        .modal-body { padding:32px; }
+        .form-group { margin-bottom:24px; }
+        .form-group label { display:block; margin-bottom:8px; font-weight:600; font-size:15px; }
+        .form-group input, .form-group textarea { width:100%; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:rgba(255,255,255,0.6); font-size:16px; }
+        .form-group input:focus, .form-group textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,113,227,0.15); }
+        .file-input-label { display:block; padding:40px; background:rgba(0,0,0,0.03); border:2px dashed var(--border); border-radius:14px; text-align:center; cursor:pointer; transition:all .3s; color:var(--text-secondary); }
+        .file-input-label:hover { border-color:var(--accent); background:rgba(0,113,227,0.05); color:var(--accent); }
+        .modal-footer { padding:20px 32px 32px; display:flex; gap:14px; }
+        .empty-state { text-align:center; padding:120px 20px; color:var(--text-secondary); }
+        .empty-state-icon { font-size:90px; margin-bottom:24px; opacity:0.6; }
+        .admin-badge { background:#ff9f0a; color:white; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600; margin-left:12px; }
+        @media (max-width:768px) { .pdf-grid { grid-template-columns:1fr; } .pdf-preview { height:380px; } header { flex-direction:column; text-align:center; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>Gestor de Documentos PDF</h1>
+                <span id="userBadge"></span>
+            </div>
+            <div>
+                <button id="loginBtn" class="btn btn-primary" onclick="showLoginModal()">Acceso Admin</button>
+                <button id="addPdfBtn" class="btn btn-primary" style="display:none;" onclick="openModal()">Agregar PDF</button>
+                <button id="logoutBtn" class="btn btn-secondary" style="margin-left:12px;display:none;" onclick="logout()">Salir</button>
+            </div>
+        </header>
+
+        <div class="content">
+            <div id="pdfList" class="pdf-grid"></div>
+            <div id="emptyState" class="empty-state">
+                <div class="empty-state-icon">No documents</div>
+                <h3>No hay documentos disponibles</h3>
+                <p>Los documentos se guardan en la nube. Inicia sesión para gestionar.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Login -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Acceso Administrador</h2>
+                <button class="close-btn" onclick="closeLoginModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <form onsubmit="event.preventDefault(); login();">
+                    <div class="form-group">
+                        <label>Contraseña</label>
+                        <input type="password" id="password" placeholder="Escribe la contraseña">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;height:50px;font-size:17px;">Entrar</button>
+                </form>
+                <p style="text-align:center;margin-top:20px;color:var(--text-secondary);font-size:14px;">
+                    Pista: la contraseña es <strong>admin2025</strong>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Agregar/Editar PDF -->
+    <div id="pdfModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Agregar Documento PDF</h2>
+                <button class="close-btn" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="pdfForm" onsubmit="savePdf(event)">
+                    <div class="form-group">
+                        <label>Título *</label>
+                        <input type="text" id="pdfTitle" required placeholder="Ej: Manual de usuario">
+                    </div>
+                    <div class="form-group">
+                        <label>Descripción</label>
+                        <textarea id="pdfDescription" placeholder="Opcional..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Archivo PDF ${editingId ? '(dejar vacío si no quieres cambiarlo)' : '*'} </label>
+                        <input type="file" id="pdfFile" accept=".pdf" style="display:none;">
+                        <label for="pdfFile" class="file-input-label">
+                            <div style="font-size:48px;margin-bottom:12px;">Upload</div>
+                            <span id="fileLabel">Seleccionar archivo PDF</span>
+                        </label>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-success" style="flex:1;height:50px;font-size:17px;">Guardar</button>
+                        <button type="button" class="btn btn-secondary" style="flex:1;height:50px;font-size:17px;" onclick="closeModal()">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
