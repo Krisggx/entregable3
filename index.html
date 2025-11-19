@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestor de Documentos PDF - Matemáticas</title>
+    <title>Repositorio Matemáticas - PDFs</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     
     <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
         import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js";
+
         const firebaseConfig = {
             apiKey: "AIzaSyAZUsv1BvwSmyhWxkOyvxBEjhia-cbcmm8",
             authDomain: "gestor-pdf-2025.firebaseapp.com",
@@ -28,7 +29,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
         let editingId = null;
         const ADMIN_PASSWORD = "admin2025";
 
-        // CATEGORÍAS DE MATEMÁTICAS + COLORES
         const CATEGORIAS = [
             { nombre: "Todos", color: "#8e8e93" },
             { nombre: "Álgebra", color: "#ff375f" },
@@ -66,6 +66,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
             });
         }
 
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
         function renderPdfs() {
             const list = document.getElementById('pdfList');
             const empty = document.getElementById('emptyState');
@@ -74,27 +80,31 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
             if (pdfsFiltrados.length === 0) {
                 list.innerHTML = '';
                 empty.style.display = 'block';
-                empty.querySelector('p').textContent = 
-                    pdfs.length === 0 
-                        ? 'No hay documentos disponibles' 
-                        : 'No se encontraron documentos con los filtros actuales';
+                empty.querySelector('p').textContent = pdfs.length === 0 
+                    ? 'No hay documentos disponibles' 
+                    : 'No se encontraron documentos con los filtros actuales';
                 return;
             }
             empty.style.display = 'none';
+
             list.innerHTML = pdfsFiltrados.map(pdf => `
                 <div class="pdf-card">
                     <div class="pdf-preview">
                         <embed src="${pdf.fileUrl}#toolbar=0&navpanes=0&scrollbar=1&view=FitH" type="application/pdf">
                     </div>
                     <div class="pdf-info">
-                        <div class="pdf-title">${pdf.title}</div>
-                        ${pdf.categoria ? `<div class="pdf-categoria" style="background:${getColorCategoria(pdf.categoria)}">${pdf.categoria}</div>` : ''}
-                        <div class="pdf-description">${pdf.description || ''}</div>
+                        <div class="pdf-title">${escapeHtml(pdf.title)}</div>
+                        ${pdf.categoria ? `<div class="pdf-categoria" style="background:${getColorCategoria(pdf.categoria)}">${escapeHtml(pdf.categoria)}</div>` : ''}
+                        <div class="pdf-description">${escapeHtml(pdf.description || '')}</div>
                         <div class="pdf-actions">
                             <button class="btn btn-primary" onclick="window.open('${pdf.fileUrl}', '_blank')">Abrir PDF</button>
                             ${isAdmin ? `
-                                <button class="btn btn-success" onclick="editPdf('${pdf.id}', '${escapeHtml(pdf.title)}', '${escapeHtml(pdf.description || '')}', '${escapeHtml(pdf.fileName || '')}', '${escapeHtml(pdf.categoria || '')}')">Editar</button>
-                                <button class="btn btn-danger" onclick="deletePdf('${pdf.id}', '${pdf.fileUrl}')">Eliminar</button>
+                                <button class="btn btn-success" onclick="editPdf('${pdf.id}', '${escapeHtml(pdf.title)}', '${escapeHtml(pdf.description || '')}', '${escapeHtml(pdf.fileName || '')}', '${escapeHtml(pdf.categoria || '')}')">
+                                    Editar
+                                </button>
+                                <button class="btn btn-danger" onclick="deletePdf('${pdf.id}', '${pdf.fileUrl}')">
+                                    Eliminar
+                                </button>
                             ` : ''}
                         </div>
                     </div>
@@ -106,7 +116,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
             const container = document.getElementById('categoriaFilters');
             container.innerHTML = CATEGORIAS.map(cat => `
                 <button class="filter-btn ${categoriaActual === cat.nombre ? 'active' : ''}" 
-                        style="background:${categoriaActual === cat.nombre ? cat.color : 'rgba(0,0,0,0.05)'}; color:${categoriaActual === cat.nombre ? 'white' : 'var(--text-primary)'}"
+                        style="background:${categoriaActual === cat.nombre ? cat.color : 'rgba(0,0,0,0.05)'}; 
+                               color:${categoriaActual === cat.nombre ? 'white' : 'var(--text-primary)'}"
                         onclick="filtrarPorCategoria('${cat.nombre}')">
                     ${cat.nombre}
                 </button>
@@ -124,9 +135,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
             renderPdfs();
         };
 
-        // === Resto de funciones (login, modal, etc.) ===
-        window.renderPdfs = renderPdfs;
-
         window.login = function() {
             const pass = document.getElementById('password').value;
             if (pass === ADMIN_PASSWORD) {
@@ -137,6 +145,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
                 document.getElementById('userBadge').innerHTML = '<span class="admin-badge">Administrador</span>';
                 document.getElementById('loginModal').classList.remove('active');
                 document.getElementById('password').value = '';
+                renderPdfs();
             } else {
                 alert('Contraseña incorrecta');
             }
@@ -148,6 +157,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
             document.getElementById('addPdfBtn').style.display = 'none';
             document.getElementById('logoutBtn').style.display = 'none';
             document.getElementById('userBadge').innerHTML = '';
+            renderPdfs();
         };
 
         window.openModal = function() {
@@ -164,9 +174,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
             editingId = id;
             document.getElementById('modalTitle').textContent = 'Editar Documento PDF';
             document.getElementById('pdfTitle').value = title;
-            document.getElementById('pdfDescription').value = desc;
+            document.getElementById('pdfDescription').value = desc || '';
             document.getElementById('pdfCategoria').value = categoria || 'Otros';
-            document.getElementById('fileLabel').textContent = fileName || 'Seleccionar nuevo archivo PDF';
+            document.getElementById('fileLabel').textContent = fileName ? `Archivo actual: ${fileName}` : 'Seleccionar nuevo PDF';
             document.getElementById('pdfFile').required = false;
             document.getElementById('pdfModal').classList.add('active');
         };
@@ -177,15 +187,16 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
         };
 
         window.deletePdf = async function(id, fileUrl) {
-            if (!confirm('¿Eliminar este documento permanentemente?')) return;
+            if (!confirm('¿Eliminar este PDF permanentemente?')) return;
             try {
                 if (fileUrl) {
-                    const fileRef = ref(storage, fileUrl.replace('https://firebasestorage.googleapis.com/v0/b/' + firebaseConfig.storageBucket + '/o/', ''));
-                    await deleteObject(fileRef);
+                    const fileRef = ref(storage, fileUrl);
+                    await deleteObject(fileRef).catch(() => {});
                 }
                 await deleteDoc(doc(db, "pdfs", id));
-                alert('Documento eliminado');
+                alert('PDF eliminado correctamente');
             } catch (e) {
+                console.error(e);
                 alert('Error al eliminar: ' + e.message);
             }
         };
@@ -197,53 +208,52 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
             const categoria = document.getElementById('pdfCategoria').value;
             const fileInput = document.getElementById('pdfFile');
 
-            if (!title) return alert('Falta el título');
-            if (!fileInput.files[0] && !editingId) return alert('Selecciona un archivo PDF');
-            if (!isAdmin) return alert('Debes iniciar sesión como admin');
+            if (!title) return alert('El título es obligatorio');
+            if (!fileInput.files[0] && !editingId) return alert('Selecciona un PDF');
+            if (!isAdmin) return alert('Debes ser administrador');
 
             try {
                 let fileUrl = editingId ? pdfs.find(p => p.id === editingId)?.fileUrl : null;
+                let fileName = editingId ? pdfs.find(p => p.id === editingId)?.fileName : null;
 
                 if (fileInput.files[0]) {
                     const file = fileInput.files[0];
-                    if (!file.type.startsWith('application/pdf')) return alert('Solo se permiten PDFs');
+                    if (!file.type.includes('pdf')) return alert('Solo archivos PDF');
+
+                    if (editingId && fileUrl) {
+                        try { await deleteObject(ref(storage, fileUrl)); } catch(e) {}
+                    }
+
                     const storageRef = ref(storage, `pdfs/${Date.now()}_${file.name}`);
-                    const metadata = { password: ADMIN_PASSWORD, contentType: 'application/pdf' };
-                    const snapshot = await uploadBytes(storageRef, file, metadata);
+                    const snapshot = await uploadBytes(storageRef, file);
                     fileUrl = await getDownloadURL(snapshot.ref);
+                    fileName = file.name;
                 }
 
                 const pdfData = {
                     title,
-                    description,
+                    description: description || '',
                     categoria,
                     fileUrl,
-                    fileName: fileInput.files[0]?.name || pdfs.find(p => p.id === editingId)?.fileName,
-                    createdAt: serverTimestamp()
+                    fileName,
+                    updatedAt: serverTimestamp()
                 };
 
                 if (editingId) {
                     await updateDoc(doc(db, "pdfs", editingId), pdfData);
-                    alert('Documento editado');
+                    alert('PDF actualizado');
                 } else {
+                    pdfData.createdAt = serverTimestamp();
                     await addDoc(collection(db, "pdfs"), pdfData);
-                    alert('Documento guardado');
+                    alert('PDF subido correctamente');
                 }
 
-                document.getElementById('pdfForm').reset();
                 closeModal();
             } catch (err) {
                 console.error(err);
-                alert('Error al guardar: ' + err.message);
+                alert('Error: ' + err.message);
             }
         };
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        window.escapeHtml = escapeHtml;
 
         window.showLoginModal = () => document.getElementById('loginModal').classList.add('active');
         window.closeLoginModal = () => {
@@ -252,10 +262,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
         };
 
         document.addEventListener('DOMContentLoaded', () => {
-            const fileInput = document.getElementById('pdfFile');
-            fileInput.addEventListener('change', () => {
-                if (fileInput.files[0]) {
-                    document.getElementById('fileLabel').textContent = fileInput.files[0].name;
+            document.getElementById('pdfFile').addEventListener('change', function() {
+                if (this.files[0]) {
+                    document.getElementById('fileLabel').textContent = this.files[0].name;
                 }
             });
         });
@@ -269,7 +278,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
             --text-primary: #1d1d1f;
             --text-secondary: #6e6e73;
             --accent: #0071e3;
-            --accent-hover: #0060c0;
             --danger: #ff453a;
             --success: #30d158;
             --border: rgba(0,0,0,0.08);
@@ -285,86 +293,63 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
             }
         }
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family: -apple-system,system-ui,'SF Pro Display',sans-serif; background:var(--bg-primary); color:var(--text-primary); min-height:100vh; padding:20px; line-height:1.5; }
+        body { font-family: -apple-system,system-ui,'SF Pro Display',sans-serif; background:var(--bg-primary); color:var(--text-primary); min-height:100vh; padding:20px; }
         .container { max-width:1280px; margin:0 auto; padding:0 20px; }
-        header { background:var(--bg-card); backdrop-filter:blur(20px); border:1px solid var(--border); border-radius:18px; padding:20px 32px; margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 4px 20px rgba(0,0,0,0.05); flex-wrap:wrap; gap:16px; }
+        header { background:var(--bg-card); backdrop-filter:blur(20px); border:1px solid var(--border); border-radius:18px; padding:20px 32px; margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; box-shadow:0 4px 20px rgba(0,0,0,0.05); }
         h1 { font-size:32px; font-weight:700; }
-        .btn { padding:10px 20px; border:none; border-radius:12px; font-size:15px; font-weight:600; cursor:pointer; transition:all .25s; display:inline-flex; gap:8px; align-items:center; justify-content:center; }
+        .btn { padding:10px 18px; border:none; border-radius:12px; font-size:15px; font-weight:600; cursor:pointer; transition:all .25s; }
         .btn-primary { background:var(--accent); color:white; }
-        .btn-primary:hover { background:var(--accent-hover); transform:translateY(-1px); }
-        .btn-secondary { background:transparent; color:var(--accent); border:1px solid var(--accent); }
-        .btn-secondary:hover { background:var(--accent); color:white; }
-        .btn-danger { background:var(--danger); color:white; }
         .btn-success { background:var(--success); color:white; }
+        .btn-danger { background:var(--danger); color:white; }
+        .btn-secondary { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+        .btn:hover { transform:translateY(-2px); }
 
-        .search-bar { margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
-        .search-input { flex: 1; min-width: 280px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 16px; background: rgba(255,255,255,0.7); }
-        .search-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,113,227,0.15); }
+        .search-input { width:100%; padding:14px 18px; border:1px solid var(--border); border-radius:12px; font-size:16px; background:rgba(255,255,255,0.7); margin:20px 0; }
+        .search-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,113,227,0.15); }
 
-        .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; padding: 8px 0; overflow-x: auto; }
-        .filter-btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            white-space: nowrap;
-            transition: all .2s;
-        }
-        .filter-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .filter-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; overflow-x:auto; padding:8px 0; }
+        .filter-btn { padding:8px 16px; border:none; border-radius:20px; font-weight:600; cursor:pointer; white-space:nowrap; transition:.2s; }
 
-        /* Etiqueta de categoría en las tarjetas - TEXTO BLANCO */
-        .pdf-categoria {
-            display: inline-block;
-            color: white !important;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 10px;
-        }
+        .pdf-categoria { color:white !important; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600; display:inline-block; margin:8px 0; }
 
-        .content { background:var(--bg-card); backdrop-filter:blur(20px); border:1px solid var(--border); border-radius:20px; padding:40px; box-shadow:0 8px 32px rgba(0,0,0,0.08); }
-        .pdf-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:32px; margin-top:20px; }
-        .pdf-card { background:var(--bg-card); backdrop-filter:blur(16px); border:1px solid var(--border); border-radius:20px; overflow:hidden; transition:all .4s cubic-bezier(.25,.8,.25,1); box-shadow:0 4px 16px rgba(0,0,0,0.06); }
-        .pdf-card:hover { transform:translateY(-10px); box-shadow:0 24px 48px rgba(0,0,0,0.18); background:var(--bg-card-hover); }
-        .pdf-preview { width:100%; height:440px; background:#fff; border-bottom:1px solid var(--border); }
-        .pdf-preview embed { width:100%; height:100%; border:none; }
+        .content { background:var(--bg-card); backdrop-filter:blur(20px); border:1px solid var(--border); border-radius:20px; padding:40px; }
+        .pdf-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:32px; }
+        .pdf-card { background:var(--bg-card); border:1px solid var(--border); border-radius:20px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.06); transition:.4s; }
+        .pdf-card:hover { transform:translateY(-10px); box-shadow:0 24px 48px rgba(0,0,0,0.18); }
+        .pdf-preview { height:440px; background:#fff; }
+        .pdf-preview embed { width:100%; height:100%; }
         .pdf-info { padding:24px; }
         .pdf-title { font-size:22px; font-weight:600; margin-bottom:8px; }
-        .pdf-description { color:var(--text-secondary); font-size:15px; margin-bottom:20px; line-height:1.5; }
-        .pdf-actions { display:flex; gap:12px; flex-wrap:wrap; }
-        .pdf-actions .btn { flex:1; justify-content:center; padding:12px; font-size:14px; }
+        .pdf-description { color:var(--text-secondary); margin-bottom:16px; }
+        .pdf-actions { display:flex; gap:10px; flex-wrap:wrap; }
+        .pdf-actions .btn { flex:1; padding:12px; font-size:14px; }
 
         .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); backdrop-filter:blur(12px); align-items:center; justify-content:center; z-index:1000; padding:20px; }
         .modal.active { display:flex; }
-        .modal-content { background:var(--bg-card); backdrop-filter:blur(30px); border-radius:20px; max-width:540px; width:100%; border:1px solid var(--border); box-shadow:0 25px 50px rgba(0,0,0,0.25); overflow:hidden; }
+        .modal-content { background:var(--bg-card); border-radius:20px; max-width:540px; width:100%; border:1px solid var(--border); box-shadow:0 25px 50px rgba(0,0,0,0.25); overflow:hidden; }
         .modal-header { padding:24px 32px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); }
         .modal-header h2 { font-size:24px; font-weight:600; }
-        .close-btn { font-size:32px; background:none; border:none; color:var(--text-secondary); cursor:pointer; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+        .close-btn { font-size:32px; background:none; border:none; color:var(--text-secondary); cursor:pointer; width:40px; height:40px; border-radius:50%; }
         .close-btn:hover { background:rgba(0,0,0,0.08); }
         .modal-body { padding:32px; }
         .form-group { margin-bottom:24px; }
-        .form-group label { display:block; margin-bottom:8px; font-weight:600; font-size:15px; }
-        .form-group input, .form-group textarea, .form-group select { width:100%; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:rgba(255,255,255,0.6); font-size:16px; }
-        .form-group select { cursor:pointer; }
-        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,113,227,0.15); }
-        .form-group textarea { min-height:80px; resize:vertical; }
-        .file-input-label { display:block; padding:40px; background:rgba(0,0,0,0.03); border:2px dashed var(--border); border-radius:14px; text-align:center; cursor:pointer; transition:all .3s; color:var(--text-secondary); }
-        .file-input-label:hover { border-color:var(--accent); background:rgba(0,113,227,0.05); color:var(--accent); }
-        .modal-footer { padding:20px 32px 32px; display:flex; gap:14px; }
-        .empty-state { text-align:center; padding:120px 20px; color:var(--text-secondary); }
-        .empty-state-icon { font-size:90px; margin-bottom:24px; opacity:0.6; }
+        .form-group label { display:block; margin-bottom:8px; font-weight:600; }
+        input, textarea, select { width:100%; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:rgba(255,255,255,0.6); font-size:16px; }
+        select { cursor:pointer; }
+        textarea { min-height:80px; resize:vertical; }
+        .file-input-label { display:block; padding:40px; border:2px dashed var(--border); border-radius:14px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.03); transition:.3s; }
+        .file-input-label:hover { border-color:var(--accent); background:rgba(0,113,227,0.05); }
+        .modal-footer { padding:0 32px 32px; display:flex; gap:14px; }
+        .empty-state { text-align:center; padding:100px 20px; color:var(--text-secondary); }
         .admin-badge { background:#ff9f0a; color:white; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600; margin-left:12px; }
-        @media (max-width:768px) { .pdf-grid { grid-template-columns:1fr; } .pdf-preview { height:380px; } header { flex-direction:column; text-align:center; } }
+        @media (max-width:768px) { .pdf-grid { grid-template-columns:1fr; } .pdf-preview { height:380px; } }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <div>
-                <h1>Repositorio de PDFs</h1>
+                <h1>Repositorio de PDFs - Matemáticas</h1>
                 <span id="userBadge"></span>
             </div>
             <div>
@@ -375,17 +360,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
         </header>
 
         <div class="content">
-            <div class="search-bar">
-                <input type="text" id="searchInput" class="search-input" placeholder="Buscar apuntes, ejercicios, exámenes..." onkeyup="buscar()">
-            </div>
+            <input type="text" id="searchInput" class="search-input" placeholder="Buscar por título o descripción..." onkeyup="buscar()">
 
             <div class="filter-bar" id="categoriaFilters"></div>
 
             <div id="pdfList" class="pdf-grid"></div>
+
             <div id="emptyState" class="empty-state">
-                <div class="empty-state-icon"></div>
                 <h3>No hay documentos disponibles</h3>
-                <p>Inicia sesión como administrador para subir material</p>
+                <p>Inicia sesión como administrador para subir PDFs</p>
             </div>
         </div>
     </div>
@@ -395,35 +378,35 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Acceso Administrador</h2>
-                <button class="close-btn" onclick="closeLoginModal()">×</button>
+                <button class="close-btn" onclick="closeLoginModal()">x</button>
             </div>
             <div class="modal-body">
                 <form onsubmit="event.preventDefault(); login();">
                     <div class="form-group">
                         <label>Contraseña</label>
-                        <input type="password" id="password" placeholder="Escribe la contraseña" required>
+                        <input type="password" id="password" required>
                     </div>
-                    <button type="submit" class="btn btn-primary" style="width:100%;height:50px;font-size:17px;">Entrar</button>
+                    <button type="submit" class="btn btn-primary" style="width:100%;padding:15px;">Entrar</button>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- Modal Agregar/Editar PDF -->
+    <!-- Modal Agregar/Editar -->
     <div id="pdfModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modalTitle">Agregar Documento PDF</h2>
-                <button class="close-btn" onclick="closeModal()">×</button>
+                <button class="close-btn" onclick="closeModal()">x</button>
             </div>
             <div class="modal-body">
                 <form id="pdfForm" onsubmit="savePdf(event)">
                     <div class="form-group">
                         <label>Título *</label>
-                        <input type="text" id="pdfTitle" required placeholder="Ej: Derivadas - Regla de la cadena">
+                        <input type="text" id="pdfTitle" required placeholder="Ej: Integrales por partes">
                     </div>
                     <div class="form-group">
-                        <label>Categoría de Matemáticas</label>
+                        <label>Categoría</label>
                         <select id="pdfCategoria">
                             <option value="Álgebra">Álgebra</option>
                             <option value="Geometría">Geometría</option>
@@ -438,19 +421,19 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebas
                     </div>
                     <div class="form-group">
                         <label>Descripción (opcional)</label>
-                        <textarea id="pdfDescription" placeholder="Ej: Apuntes completos del tema 5 con ejercicios resueltos"></textarea>
+                        <textarea id="pdfDescription" placeholder="Ej: Apuntes del tema 7"></textarea>
                     </div>
                     <div class="form-group">
-                        <label>Archivo PDF *</label>
+                        <label>Archivo PDF ${editingId ? '(opcional si no cambias)' : '*'}</label>
                         <input type="file" id="pdfFile" accept=".pdf" style="display:none;">
                         <label for="pdfFile" class="file-input-label">
-                            <div style="font-size:48px;margin-bottom:12px;"></div>
+                            <div style="font-size:48px;margin-bottom:12px;">PDF</div>
                             <span id="fileLabel">Seleccionar archivo PDF</span>
                         </label>
                     </div>
                     <div class="modal-footer">
-                        <button type="submit" class="btn btn-success" style="flex:1;height:50px;font-size:17px;">Guardar</button>
-                        <button type="button" class="btn btn-secondary" style="flex:1;height:50px;font-size:17px;" onclick="closeModal()">Cancelar</button>
+                        <button type="submit" class="btn btn-success" style="flex:1;padding:15px;">Guardar</button>
+                        <button type="button" class="btn btn-secondary" style="flex:1;padding:15px;" onclick="closeModal()">Cancelar</button>
                     </div>
                 </form>
             </div>
